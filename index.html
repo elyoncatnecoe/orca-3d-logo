@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虎鲸 3D Logo · 可打印重建版（封闭流形 · 鳍/尾放样弧度 · STL导出）</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        body {
+            background: radial-gradient(120% 100% at 50% 22%, #161f4d 0%, #0b1026 55%, #060a1c 100%);
+            font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        #app { width: 100vw; height: 100vh; }
+        .hint {
+            position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+            color: rgba(205, 214, 255, .55); font-size: 13px; letter-spacing: 1px;
+            text-align: center; pointer-events: none; white-space: nowrap; z-index: 10;
+        }
+        #panel {
+            position: fixed; top: 52px; left: 14px; width: 300px; max-height: calc(100vh - 70px); overflow: auto;
+            background: rgba(10, 16, 40, .78); border: 1px solid rgba(140, 160, 255, .22); border-radius: 12px;
+            padding: 12px 14px 14px; color: #cdd6ff; font-size: 12.5px; line-height: 1.55; z-index: 20;
+            backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+        }
+        #panel h3 { font-size: 13px; font-weight: 600; letter-spacing: .5px; margin-bottom: 8px; color: #e6ebff; display: flex; justify-content: space-between; align-items: center; }
+        #panel h3 button { all: unset; cursor: pointer; font-size: 12px; color: #8fa2ff; }
+        #panel .row { display: grid; grid-template-columns: 74px 1fr 56px; gap: 6px; align-items: center; margin: 5px 0; }
+        #panel .row.chk { grid-template-columns: 1fr 1fr 1fr; }
+        #panel label { color: #aebaff; }
+        #panel input[type=range] { width: 100%; accent-color: #4D6BFE; }
+        #panel input[type=number] { width: 100%; background: rgba(255,255,255,.07); border: 1px solid rgba(140,160,255,.25); color: #e6ebff; border-radius: 6px; padding: 2px 6px; }
+        #panel .val { text-align: right; color: #e6ebff; font-variant-numeric: tabular-nums; }
+        #panel .btns { display: flex; gap: 8px; margin-top: 10px; }
+        #panel .btns button {
+            flex: 1; cursor: pointer; border: 0; border-radius: 8px; padding: 8px 6px; font-size: 12.5px; font-weight: 600;
+            color: #fff; background: #4D6BFE;
+        }
+        #panel .btns button.alt { background: rgba(77, 107, 254, .25); color: #cdd6ff; border: 1px solid rgba(140,160,255,.35); }
+        #panel .btns button:hover { filter: brightness(1.12); }
+        #info { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(140,160,255,.18); color: #cdd6ff; }
+        #info hr { border: 0; border-top: 1px dashed rgba(140,160,255,.25); margin: 7px 0; }
+        #info b { color: #fff; font-weight: 600; }
+        #info .dim { color: #7f8bc4; }
+        .ok { color: #6ee7a0 !important; } .bad { color: #ff8a8a !important; }
+        #status { margin-top: 8px; min-height: 18px; color: #aebaff; }
+        #panel.collapsed > :not(h3) { display: none; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div class="hint">拖动旋转 · 滚轮缩放 · 右键平移</div>
+
+    <div id="panel">
+        <h3>打印设置 <button id="btn-fold" type="button">收起</button></h3>
+        <div class="row"><label for="p-len">打印长度</label><input id="p-len" type="range" min="40" max="220" step="1" value="100"><span class="val" id="v-len"></span></div>
+        <div class="row"><label for="p-wall">最薄边缘</label><input id="p-wall" type="range" min="0.5" max="2" step="0.05" value="1.0"><span class="val" id="v-wall"></span></div>
+        <div class="row"><label for="p-fin">鳍厚度</label><input id="p-fin" type="range" min="0.6" max="1.8" step="0.05" value="1"><span class="val" id="v-fin"></span></div>
+        <div class="row"><label for="p-curl">鳍/尾弧度</label><input id="p-curl" type="range" min="0" max="2" step="0.05" value="1"><span class="val" id="v-curl"></span></div>
+        <div class="row"><label for="p-relief">眼斑浮雕</label><input id="p-relief" type="range" min="0" max="1.5" step="0.05" value="0.8"><span class="val" id="v-relief"></span></div>
+        <div class="row"><label for="p-flatdepth"><input id="p-flat" type="checkbox" checked> 底部压平</label><input id="p-flatdepth" type="range" min="0" max="0.6" step="0.01" value="0.25"><span class="val" id="v-flatdepth"></span></div>
+        <div class="row chk"><label><input id="p-shade" type="checkbox" checked> 着色</label><label><input id="p-wire" type="checkbox"> 线框</label><label><input id="p-rot" type="checkbox" checked> 旋转</label></div>
+        <div class="row chk"><label style="grid-column: span 3"><input id="p-merged" type="checkbox" disabled> 显示合并后的打印实体</label></div>
+        <div class="btns"><button id="btn-check" class="alt" type="button">合并 &amp; 检查</button><button id="btn-stl" type="button">导出 STL</button></div>
+        <div id="status"></div>
+        <div id="info"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js">
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js">
+    </script>
+    <script>
+        (function () {
+            'use strict';
+// ---- 原始 SVG 轮廓（来自 deepseek logo，原样保留）
+const SVG = {
+  "PATH": "M 144.00 80.00 C 144.67 84.83, 143.00 95.34, 141.00 102.00 C 139.00 108.66, 136.50 113.84, 132.00 120.00 C 127.50 126.16, 119.66 134.34, 114.00 139.00 C 108.34 143.66, 103.49 146.17, 98.00 148.00 C 92.51 149.83, 87.83 150.83, 81.00 150.00 C 74.17 149.17, 63.83 146.66, 57.00 143.00 C 50.17 139.34, 44.50 134.16, 40.00 128.00 C 35.50 121.84, 31.83 113.16, 30.00 106.00 C 28.17 98.84, 28.17 90.99, 29.00 85.00 C 29.83 79.01, 32.17 74.50, 35.00 70.00 C 37.83 65.50, 41.67 61.00, 46.00 58.00 C 50.33 55.00, 56.01 53.00, 61.00 52.00 C 66.00 51.00, 70.51 51.00, 76.00 52.00 C 81.49 53.00, 85.34 52.34, 94.00 58.00 C 102.66 63.66, 120.84 83.50, 128.00 86.00 C 135.16 88.50, 134.34 74.00, 137.00 73.00 C 139.66 72.00, 143.33 75.17, 144.00 80.00 Z",
+  "BROW_PATH": "M 146.00 127.00 C 144.34 128.00, 138.50 129.50, 136.00 129.00 C 133.50 128.50, 131.83 126.33, 131.00 124.00 C 130.17 121.67, 131.67 117.16, 131.00 115.00 C 130.33 112.84, 128.33 111.67, 127.00 111.00 C 125.67 110.33, 124.00 111.33, 123.00 111.00 C 122.00 110.67, 121.17 109.83, 121.00 109.00 C 120.83 108.17, 120.50 106.67, 122.00 106.00 C 123.50 105.33, 127.84 104.67, 130.00 105.00 C 132.16 105.33, 133.00 106.17, 135.00 108.00 C 137.00 109.83, 140.17 113.50, 142.00 116.00 C 143.83 118.50, 145.33 121.17, 146.00 123.00 C 146.67 124.83, 147.66 126.00, 146.00 127.00 Z",
+  "DORSAL_PATH": "M 10.436 2.993 L 13.852 4.746 C 12.758 3.684, 13.995 2.812, 14.282 2.708 C 14.581 2.600, 14.386 2.229, 13.418 2.233 C 12.450 2.237, 11.565 2.562, 10.436 2.993 Z",
+  "PEC_PATH": "M 16.747 19.267 L 20.614 19.565 C 20.093 19.673, 19.421 19.772, 18.722 19.707 C 17.815 19.630, 17.268 19.526, 16.747 19.267 Z",
+  "TAIL_PATH": "M 17.902 4.103 L 22.379 9.998 C 22.435 9.614, 22.507 9.073, 22.499 8.762 C 22.494 8.572, 22.538 8.499, 22.755 8.477 C 23.354 8.408, 23.935 8.244, 24.469 7.950 C 26.019 7.104, 26.644 5.713, 26.791 4.047 C 26.813 3.792, 26.787 3.529, 26.517 3.395 C 26.235 3.257, 26.114 3.520, 25.949 3.653 C 25.892 3.697, 25.845 3.753, 25.797 3.805 C 25.385 4.245, 24.903 4.534, 24.274 4.500 C 23.354 4.448, 22.568 4.737, 21.873 5.441 C 21.726 4.573, 21.235 4.055, 20.489 3.723 C 20.099 3.551, 19.703 3.377, 19.430 3.002 C 19.239 2.735, 19.186 2.437, 19.091 2.143 C 19.030 1.966, 18.970 1.785, 18.766 1.754 C 18.544 1.720, 18.457 1.905, 18.370 2.061 C 18.023 2.695, 17.889 3.395, 17.902 4.103 Z"
+};
+
+// =====================================================================
+//  虎鲸 · 可打印几何重建（纯 JS，不依赖 three）
+//  - 身体：绕曲线中轴的结构化旋成体（两端单顶点，无退化三角）
+//  - 背鳍/胸鳍/尾鳍：按原 SVG 轮廓做「两条边缘线放样」的结构化网格，
+//    厚度按到边缘距离 + 沿翼展渐薄 做透镜形截面，并带弯曲(camber)
+//  - 每个零件本身都是封闭流形；最终可用 manifold 合并成一个实体
+// =====================================================================
+const CONFIG = {
+    SWEPT_SLICES: 60, SWEPT_RINGS: 48,
+    TAIL_FORK_SCALE: 0.177, TAIL_THICKNESS: 0.06, TAIL_OPEN_ANGLE_DEG: 76.95,
+    TAIL_NOTCH_DX: 0.3, TAIL_NOTCH_DY: 0.5, TAIL_TILT_DEG: 50,
+    DORSAL_START_FRAC: 0.331, DORSAL_END_FRAC: 0.559, DORSAL_SAMPLES: 40,
+    DORSAL_THICKNESS: 0.06, DORSAL_HEIGHT_SCALE: 0.3186, DORSAL_SINK: 0.0,
+    PEC_START_FRAC: 0.38, PEC_END_FRAC: 0.48, PEC_SPAN: 0.924, PEC_SWEEP: 0.33,
+    PEC_THICKNESS: 0.05, PEC_ANGLE_DEG: 30, PEC_RADIAN: 130, PEC_SINK: 0.0,
+    PEC_OUTWARD_OFFSET: -0.025, PEC_BACKWARD_OFFSET: 0.0,
+    BODY_TARGET_HEIGHT: 3.5,
+    AUTO_ROTATE_SPEED: 1.6, FLOAT_SPEED: 1.2, FLOAT_AMPLITUDE: 0.06,
+    BROW_SCALE: 0.65, BROW_OFFSET_X: -35.4, BROW_OFFSET_Y: 6.0, BROW_LIFT: 0.9,
+    EYE_OFFSET_Y: 10.5, EYE_RADIUS: 2.8, EYE_CIRCLE_SEGMENTS: 32,
+    COLOR_BODY_BLUE: 0x4D6BFE, COLOR_WHITE: 0xffffff,
+};
+const TAIL_NOTCH = { x: 21.873, y: 5.441 };
+const DORSAL_BL = 10.436, DORSAL_BR = 13.852;
+const PEC_BL = 16.747, PEC_BR = 20.614, PEC_DROP = 0.288;
+
+// 打印/造型可调参数（单位：模型单位，身体高 = 3.5）
+const PRINT_DEFAULTS = {
+    relief: 0.04,        // 眼斑/眼睛浮雕高度（模型单位，0 = 不生成）
+    minWall: 0.055,      // 最薄边缘厚度（模型单位）
+    finScale: 1.0,       // 鳍整体厚度倍率
+    curl: 1.0,           // 鳍/尾弧度倍率
+    bodyNS: 160, bodyNR: 96,
+    plateQ: 1.0,         // 鳍网格密度倍率
+};
+
+// ------------------------------ 向量/多段线工具 ------------------------------
+const v3add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const v3sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const v3mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const v3dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const v3cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const v3len = (a) => Math.hypot(a[0], a[1], a[2]);
+const v3norm = (a) => { const l = v3len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const sstep = (e0, e1, x) => { const t = clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
+
+function polyArea2(p) { let a = 0; for (let i = p.length - 1, j = 0; j < p.length; i = j++) a += p[i].x * p[j].y - p[j].x * p[i].y; return a * 0.5; }
+function dedupe2(P, eps = 1e-9) {
+    const o = [P[0]];
+    for (let i = 1; i < P.length; i++) { const q = o[o.length - 1]; if (Math.hypot(P[i][0] - q[0], P[i][1] - q[1]) > eps) o.push(P[i]); }
+    return o;
+}
+function cumLen2(P) { const c = [0]; for (let i = 1; i < P.length; i++) c.push(c[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1])); return c; }
+function atFrac2(P, c, t) {
+    const L = c[c.length - 1], s = clamp01(t) * L;
+    let lo = 0, hi = P.length - 1;
+    while (hi - lo > 1) { const md = (lo + hi) >> 1; if (c[md] <= s) lo = md; else hi = md; }
+    const seg = (c[hi] - c[lo]) || 1, u = (s - c[lo]) / seg;
+    return [P[lo][0] + (P[hi][0] - P[lo][0]) * u, P[lo][1] + (P[hi][1] - P[lo][1]) * u];
+}
+function resample2(P, n) { const c = cumLen2(P), o = []; for (let i = 0; i <= n; i++) o.push(atFrac2(P, c, i / n)); return o; }
+function makeSegs(polys) {
+    const segs = [];
+    for (const P of polys) for (let i = 0; i + 1 < P.length; i++) segs.push([P[i][0], P[i][1], P[i + 1][0], P[i + 1][1]]);
+    return segs;
+}
+function distSegs(x, y, segs) {
+    let best = 1e30;
+    for (let i = 0; i < segs.length; i++) {
+        const s = segs[i], dx = s[2] - s[0], dy = s[3] - s[1];
+        const l2 = dx * dx + dy * dy;
+        let t = l2 > 0 ? ((x - s[0]) * dx + (y - s[1]) * dy) / l2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = s[0] + t * dx - x, py = s[1] + t * dy - y;
+        const d = px * px + py * py;
+        if (d < best) best = d;
+    }
+    return Math.sqrt(best);
+}
+
+// ------------------------------ 原始轮廓 → 中轴/半径剖面 ------------------------------
+let _prof = null;
+function getProfile() {
+    if (_prof) return _prof;
+    const rawContour = samplePathDense(SVG.PATH, 50, 800);
+    let cx = 0, cy = 0;
+    rawContour.forEach(p => { cx += p.x; cy += p.y; });
+    cx /= rawContour.length; cy /= rawContour.length;
+    const pts = rawContour.map(p => ({ x: (p.x - cx) * 1.1, y: -(p.y - cy) }));
+    if (polyArea2(pts) < 0) pts.reverse();
+    const sw0 = computeSweptProfile(pts);
+    let top = -Infinity, bot = Infinity;
+    for (let i = 0; i < sw0.xs.length; i++) {
+        top = Math.max(top, sw0.mid[i] + sw0.rad[i]);
+        bot = Math.min(bot, sw0.mid[i] - sw0.rad[i]);
+    }
+    const scale = CONFIG.BODY_TARGET_HEIGHT / (top - bot);
+    const sw = { xs: sw0.xs.map(v => v * scale), mid: sw0.mid.map(v => v * scale), rad: sw0.rad.map(v => v * scale) };
+    _prof = { cx, cy, pts, sw0, sw, scale };
+    return _prof;
+}
+
+// 三次 Hermite（等距/非等距均可）
+function makeHermite(X, Y) {
+    const n = X.length, m = new Array(n);
+    for (let i = 0; i < n; i++) {
+        if (i === 0) m[i] = (Y[1] - Y[0]) / (X[1] - X[0]);
+        else if (i === n - 1) m[i] = (Y[n - 1] - Y[n - 2]) / (X[n - 1] - X[n - 2]);
+        else m[i] = (Y[i + 1] - Y[i - 1]) / (X[i + 1] - X[i - 1]);
+    }
+    return function (x) {
+        if (x <= X[0]) return Y[0];
+        if (x >= X[n - 1]) return Y[n - 1];
+        let lo = 0, hi = n - 1;
+        while (hi - lo > 1) { const md = (lo + hi) >> 1; if (X[md] <= x) lo = md; else hi = md; }
+        const h = X[hi] - X[lo], t = (x - X[lo]) / h, t2 = t * t, t3 = t2 * t;
+        return (2 * t3 - 3 * t2 + 1) * Y[lo] + (t3 - 2 * t2 + t) * h * m[lo] + (-2 * t3 + 3 * t2) * Y[hi] + (t3 - t2) * h * m[hi];
+    };
+}
+
+let _bodyFns = null;
+function getBodyFns() {
+    if (_bodyFns) return _bodyFns;
+    const { xs, mid, rad } = getProfile().sw;
+    _bodyFns = { fMid: makeHermite(xs, mid), fR2: makeHermite(xs, rad.map(r => r * r)), x0: xs[0], x1: xs[xs.length - 1] };
+    return _bodyFns;
+}
+// ------------------------------ 身体（旋成体，两端单顶点） ------------------------------
+function buildBody(prof, NS, NR) {
+    const { xs, mid, rad } = prof.sw;
+    const fMid = makeHermite(xs, mid), fR2 = makeHermite(xs, rad.map(r => r * r));
+    const x0 = xs[0], L = xs[xs.length - 1] - x0;
+    const verts = [];
+    const stationX = [];
+    for (let i = 0; i <= NS; i++) {
+        const t = i / NS;
+        stationX.push(x0 + L * (0.55 * t + 0.45 * 0.5 * (1 - Math.cos(Math.PI * t))));
+    }
+    stationX[NS] = xs[xs.length - 1];
+    const cs = [], sn = [];
+    for (let k = 0; k < NR; k++) { const th = (k / NR) * Math.PI * 2; cs.push(Math.cos(th)); sn.push(Math.sin(th)); }
+    verts.push([stationX[0], mid[0], 0]);                       // 起点极点
+    const ring = (i) => 1 + (i - 1) * NR;                          // 第 i 圈(1..NS-1)的首顶点下标
+    for (let i = 1; i < NS; i++) {
+        const x = stationX[i], m = fMid(x), r = Math.sqrt(Math.max(0, fR2(x)));
+        for (let k = 0; k < NR; k++) verts.push([x, m + r * cs[k], r * sn[k]]);
+    }
+    const endIdx = verts.length;
+    verts.push([stationX[NS], mid[mid.length - 1], 0]);          // 终点极点
+    const tris = [];
+    for (let k = 0; k < NR; k++) { const k2 = (k + 1) % NR; tris.push([0, ring(1) + k2, ring(1) + k]); }
+    for (let i = 1; i < NS - 1; i++) {
+        for (let k = 0; k < NR; k++) {
+            const k2 = (k + 1) % NR;
+            const a = ring(i) + k, b = ring(i + 1) + k, c = ring(i) + k2, d = ring(i + 1) + k2;
+            tris.push([a, c, b], [c, d, b]);
+        }
+    }
+    for (let k = 0; k < NR; k++) { const k2 = (k + 1) % NR; tris.push([endIdx, ring(NS - 1) + k, ring(NS - 1) + k2]); }
+    return { verts, tris };
+}
+
+// ------------------------------ 厚板放样（背鳍/胸鳍/尾鳍通用） ------------------------------
+// spec: {lobes:[{A,B}], tList, C, frame:{o,ex,ey}, camber(a,b), thick(a,b), }
+//   A、B 为从根部到梢尖的两条边缘线（2D，尖端同点）；第 i 站在 A(t_i)、B(t_i) 之间取 C+1 个弦向点
+function buildPlateSolid(spec) {
+    const { lobes, tList, C, frame, camber, thick } = spec;
+    const ez = v3norm(v3cross(frame.ex, frame.ey));
+    const verts = [], wmap = new Map(), botOf = new Map(), topTris = [];
+    const key = (p) => Math.round(p[0] * 1e7) + ',' + Math.round(p[1] * 1e7) + ',' + Math.round(p[2] * 1e7);
+    const vid = (p) => { const k = key(p); let id = wmap.get(k); if (id === undefined) { id = verts.length; verts.push(p); wmap.set(k, id); } return id; };
+    const H = 1e-4;
+    function pair(a, b) {
+        const c = camber(a, b);
+        const ca = (camber(a + H, b) - camber(a - H, b)) / (2 * H), cb = (camber(a, b + H) - camber(a, b - H)) / (2 * H);
+        const nl = v3norm([-ca, -cb, 1]);
+        const m = v3add(v3add(v3add(frame.o, v3mul(frame.ex, a)), v3mul(frame.ey, b)), v3mul(ez, c));
+        const n = v3add(v3add(v3mul(frame.ex, nl[0]), v3mul(frame.ey, nl[1])), v3mul(ez, nl[2]));
+        const T = thick(a, b);
+        const t = vid(v3add(m, v3mul(n, T / 2))), bt = vid(v3sub(m, v3mul(n, T / 2)));
+        if (!botOf.has(t)) botOf.set(t, bt);
+        return [t, bt];
+    }
+    let negCells = 0, totalCells = 0;
+    const botTris = [];
+    for (const lobe of lobes) {
+        const A = lobe.A, B = lobe.B, cA = cumLen2(A), cB = cumLen2(B);
+        const R = tList.length, rows = [];
+        for (let i = 0; i < R; i++) {
+            const pa = atFrac2(A, cA, tList[i]), pb = atFrac2(B, cB, tList[i]);
+            const row = [];
+            for (let j = 0; j <= C; j++) {
+                const cj = 0.5 - 0.5 * Math.cos(Math.PI * j / C);
+                row.push({ P: [pa[0] + (pb[0] - pa[0]) * cj, pa[1] + (pb[1] - pa[1]) * cj] });
+            }
+            rows.push(row);
+        }
+        // 雅可比符号（决定三角形朝向）
+        let area = 0;
+        for (let i = 0; i + 1 < R; i++) for (let j = 0; j < C; j++) {
+            const p00 = rows[i][j].P, p10 = rows[i + 1][j].P, p01 = rows[i][j + 1].P;
+            area += (p10[0] - p00[0]) * (p01[1] - p00[1]) - (p10[1] - p00[1]) * (p01[0] - p00[0]);
+        }
+        const pos = area > 0;
+        for (let i = 0; i + 1 < R; i++) for (let j = 0; j < C; j++) {
+            const p00 = rows[i][j].P, p10 = rows[i + 1][j].P, p01 = rows[i][j + 1].P;
+            const cr = (p10[0] - p00[0]) * (p01[1] - p00[1]) - (p10[1] - p00[1]) * (p01[0] - p00[0]);
+            totalCells++; if ((cr > 0) !== pos) negCells++;
+        }
+        const ids = rows.map(row => row.map(c => pair(c.P[0], c.P[1])));
+        for (let i = 0; i + 1 < R; i++) for (let j = 0; j < C; j++) {
+            const q00 = ids[i][j], q10 = ids[i + 1][j], q01 = ids[i][j + 1], q11 = ids[i + 1][j + 1];
+            const pushT = (a, b, c) => {
+                if (a[0] === b[0] || b[0] === c[0] || a[0] === c[0]) return;
+                if (pos) { topTris.push([a[0], b[0], c[0]]); botTris.push([a[1], c[1], b[1]]); }
+                else { topTris.push([a[0], c[0], b[0]]); botTris.push([a[1], b[1], c[1]]); }
+            };
+            pushT(q00, q10, q01); pushT(q10, q11, q01);
+        }
+    }
+    // 边界边 → 侧壁（接缝处两瓣互相抵消，不会生成壁）
+    const dir = new Map();
+    for (const t of topTris) for (let k = 0; k < 3; k++) {
+        const u = t[k], v = t[(k + 1) % 3]; dir.set(u + '_' + v, [u, v]);
+    }
+    const walls = [];
+    for (const [k, [u, v]] of dir) {
+        if (dir.has(v + '_' + u)) continue;
+        const bu = botOf.get(u), bv = botOf.get(v);
+        walls.push([u, bu, v], [v, bu, bv]);
+    }
+    const tris = topTris.concat(botTris, walls);
+    return { verts, tris, negCells, totalCells };
+}
+
+// 找到放样终止站：此处两条边缘线之间的弦长 ≥ Lc（避免尖端处退化成零面积薄片）
+function tipStop(A, B, Lc) {
+    const cA = cumLen2(A), cB = cumLen2(B);
+    for (let t = 0.9998; t > 0.5; t -= 0.0004) {
+        const pa = atFrac2(A, cA, t), pb = atFrac2(B, cB, t);
+        if (Math.hypot(pa[0] - pb[0], pa[1] - pb[1]) >= Lc) return t;
+    }
+    return 0.9;
+}
+function endChordSeg(A, B, tEnd) {
+    const pa = atFrac2(A, cumLen2(A), tEnd), pb = atFrac2(B, cumLen2(B), tEnd);
+    return [pa[0], pa[1], pb[0], pb[1]];
+}
+function uniformStations(n, tEnd) { const o = []; for (let i = 0; i < n; i++) o.push(tEnd * i / (n - 1)); return o; }
+
+// ------------------------------ 其它工具 ------------------------------
+function meshVolume(verts, tris) {
+    let v = 0;
+    for (const t of tris) {
+        const a = verts[t[0]], b = verts[t[1]], c = verts[t[2]];
+        v += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+    }
+    return v;
+}
+function flipTris(tris) { return tris.map(t => [t[0], t[2], t[1]]); }
+function mirrorZ(m) { return { verts: m.verts.map(p => [p[0], p[1], -p[2]]), tris: flipTris(m.tris) }; }
+function meshStats(verts, tris) {
+    const dir = new Map(); let bad = 0, degen = 0;
+    for (const t of tris) {
+        if (t[0] === t[1] || t[1] === t[2] || t[0] === t[2]) { degen++; continue; }
+        for (let k = 0; k < 3; k++) { const e = t[k] + '_' + t[(k + 1) % 3]; dir.set(e, (dir.get(e) || 0) + 1); }
+    }
+    let open = 0, nonManifold = 0;
+    for (const [e, c] of dir) {
+        const [u, v] = e.split('_');
+        const r = dir.get(v + '_' + u) || 0;
+        if (c !== 1 || r !== 1) { if (c > 1 || r > 1) nonManifold++; else open++; }
+    }
+    return { verts: verts.length, tris: tris.length, open, nonManifold, degen, volume: meshVolume(verts, tris) };
+}
+function ensureOutward(m) {
+    if (meshVolume(m.verts, m.tris) < 0) m.tris = flipTris(m.tris);
+    return m;
+}
+
+
+// ------------------------------ 眼斑 / 眼睛：贴合身体的浮雕实体 ------------------------------
+// 轮廓沿 z 向投影到身体表面（与原版贴面方式一致），上表面高出表面 h，下表面埋入身体，侧壁沿法线，
+// 因此是真正有厚度、并与身体相交（合并后连成一体）的封闭零件。
+function bodySurfaceZ(x, y) {
+    const F = getBodyFns(), dy = y - F.fMid(x);
+    return Math.sqrt(Math.max(1e-10, F.fR2(x) - dy * dy));
+}
+function tipStart(A, B, Lc) {
+    const cA = cumLen2(A), cB = cumLen2(B);
+    for (let t = 0.0002; t < 0.5; t += 0.0004) {
+        const pa = atFrac2(A, cA, t), pb = atFrac2(B, cB, t);
+        if (Math.hypot(pa[0] - pb[0], pa[1] - pb[1]) >= Lc) return t;
+    }
+    return 0.1;
+}
+function splitAtTips(P) {                       // 闭合多边形 → 两端点之间的两条弧
+    let bi = 0, bj = 1, bd = -1;
+    for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+        const d = Math.hypot(P[i][0] - P[j][0], P[i][1] - P[j][1]); if (d > bd) { bd = d; bi = i; bj = j; }
+    }
+    const A = [], B = [];
+    for (let k = bi; k <= bj; k++) A.push(P[k]);
+    for (let k = bi; k >= 0; k--) B.push(P[k]);
+    for (let k = P.length - 1; k >= bj; k--) B.push(P[k]);
+    return { A, B };
+}
+function reliefPlate(A, B, h, D, Lc, S, C) {
+    A = dedupe2(A); B = dedupe2(B);
+    const t0 = tipStart(A, B, Lc), t1 = tipStop(A, B, Lc);
+    const tl = []; for (let i = 0; i < S; i++) tl.push(t0 + (t1 - t0) * i / (S - 1));
+    const cA = cumLen2(A), cB = cumLen2(B);
+    const segs = makeSegs([resample2(A, 220), resample2(B, 220)]);
+    for (const t of [t0, t1]) { const pa = atFrac2(A, cA, t), pb = atFrac2(B, cB, t); segs.push([pa[0], pa[1], pb[0], pb[1]]); }
+    const thick = (a, b) => { const u = clamp01(distSegs(a, b, segs) / D); return 2 * h * (0.45 + 0.55 * (1 - (1 - u) * (1 - u))); };
+    return ensureOutward(buildPlateSolid({
+        lobes: [{ A, B }], tList: tl, C, frame: { o: [0, 0, 0], ex: [1, 0, 0], ey: [0, 1, 0] },
+        camber: (a, b) => bodySurfaceZ(a, b), thick,
+    }));
+}
+function buildReliefs(prof, h, Q) {
+    const { cx, cy, scale } = prof;
+    const toW = (sx, sy) => [((sx - cx) * CONFIG.BROW_SCALE + CONFIG.BROW_OFFSET_X) * scale, (-(sy - cy) * CONFIG.BROW_SCALE + CONFIG.BROW_OFFSET_Y) * scale];
+    const svg = sampleBrowPath(SVG.BROW_PATH, 40);
+    let P = dedupe2(svg.map(p => toW(p.x, p.y)));
+    if (Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]) < 1e-9) P.pop();
+    const { A, B } = splitAtTips(P);
+    const browR = reliefPlate(A, B, h, 0.03, 0.03, Math.round(64 * Q), Math.round(20 * Q));
+    const dent = svg.reduce((p, c) => (c.y < p.y ? c : p), svg[0]);
+    const ec = toW(dent.x - 2, dent.y + CONFIG.EYE_OFFSET_Y), R = CONFIG.EYE_RADIUS * CONFIG.BROW_SCALE * scale;
+    const up = [], lo = [];
+    for (let i = 0; i <= 48; i++) { const th = Math.PI * (1 - i / 48); up.push([ec[0] + R * Math.cos(th), ec[1] + R * Math.sin(th)]); lo.push([ec[0] + R * Math.cos(th), ec[1] - R * Math.sin(th)]); }
+    const eyeR = reliefPlate(up, lo, h * 1.15, R * 0.9, R * 0.25, Math.round(26 * Q), Math.round(18 * Q));
+    return { browR, browL: ensureOutward(mirrorZ(browR)), eyeR, eyeL: ensureOutward(mirrorZ(eyeR)) };
+}
+
+// ------------------------------ 主入口 ------------------------------
+function buildOrca(opts) {
+    const P = Object.assign({}, PRINT_DEFAULTS, opts || {});
+    const prof = getProfile();
+    const { sw, scale } = prof;
+    const e = P.minWall;                                   // 边缘最小厚度
+    const fs = P.finScale, cu = P.curl;
+
+    // ---- 身体 ----
+    const body = ensureOutward(buildBody(prof, P.bodyNS, P.bodyNR));
+
+    // 原代码中的 backSurfaceAt（已是缩放后坐标）
+    function backSurfaceAt(frac) {
+        const xsArr = sw.xs, midArr = sw.mid, radArr = sw.rad;
+        const totalX = xsArr[xsArr.length - 1] - xsArr[0];
+        const x = xsArr[0] + totalX * frac;
+        let idx = 0; while (idx < xsArr.length - 1 && xsArr[idx + 1] < x) idx++;
+        const t = (x - xsArr[idx]) / (xsArr[idx + 1] - xsArr[idx] || 1);
+        const mid = midArr[idx] * (1 - t) + midArr[idx + 1] * t;
+        const rad = radArr[idx] * (1 - t) + radArr[idx + 1] * t;
+        return { x, top: mid + rad, mid, rad };
+    }
+    const Q = P.plateQ;
+    const stations = (n, tipCluster) => {
+        const o = []; for (let i = 0; i < n; i++) { const t = i / n; o.push(tipCluster ? 1 - Math.pow(1 - t, 1.0 + tipCluster) : t); } return o;
+    };
+
+    // ---- 背鳍 ----
+    const dorsalSvg = sampleSvgPath(SVG.DORSAL_PATH, CONFIG.DORSAL_SAMPLES);
+    const by0 = backSurfaceAt(CONFIG.DORSAL_START_FRAC).top, by1 = backSurfaceAt(CONFIG.DORSAL_END_FRAC).top;
+    const dorsalPts = dorsalSvg.map(p => {
+        const u = (p.x - DORSAL_BL) / (DORSAL_BR - DORSAL_BL);
+        const baseY = 2.993 + u * (4.746 - 2.993);
+        const h = Math.max(0, (baseY - p.y) * CONFIG.DORSAL_HEIGHT_SCALE);
+        const frac = CONFIG.DORSAL_START_FRAC + u * (CONFIG.DORSAL_END_FRAC - CONFIG.DORSAL_START_FRAC);
+        const px = (sw.xs[0] + (sw.xs[sw.xs.length - 1] - sw.xs[0]) * frac);
+        const py = by0 + u * (by1 - by0) - CONFIG.DORSAL_SINK + h;
+        return { x: px, y: py };
+    });
+    let dorsal;
+    {
+        const D2 = dedupe2(dorsalPts.map(p => [p.x, p.y]));
+        // 轮廓顺序：[0]前基点 [1]后基点 [2..41]后缘曲线→尖端 [42..121]前缘曲线回到前基点
+        const tipIdx = 1 + CONFIG.DORSAL_SAMPLES;           // 第一段曲线终点 = 尖端
+        let TE = D2.slice(1, tipIdx + 1);
+        let LE = D2.slice(tipIdx, D2.length).reverse();     // 前基点 → 尖端
+        if (Math.hypot(LE[0][0] - D2[0][0], LE[0][1] - D2[0][1]) > 1e-6) LE.unshift(D2[0]);
+        const tongue = 0.34;
+        const A = [[LE[0][0], LE[0][1] - tongue]].concat(LE), B = [[TE[0][0], TE[0][1] - tongue]].concat(TE);
+        const Ad = dedupe2(A), Bd = dedupe2(B);
+        const tEndD = tipStop(Ad, Bd, 0.05);
+        const segs = makeSegs([resample2(Ad, 240), resample2(Bd, 240)]);
+        segs.push(endChordSeg(Ad, Bd, tEndD));
+        const x0 = D2[0][0], x1 = TE[0][0];
+        const baseY = (x) => by0 + (x - x0) / (x1 - x0) * (by1 - by0);
+        let hfin = 0; for (const p of D2) hfin = Math.max(hfin, p[1] - baseY(p[0]));
+        const Hr = 0.215 * fs, Ht = 0.085 * fs, Dd = 0.24;
+        const thick = (a, b) => {
+            const d = distSegs(a, b, segs);
+            const sg = (b - baseY(a)) / hfin;
+            const Hm = Math.max(e, Ht + (Hr - Ht) * Math.pow(1 - clamp01(sg), 1.5));
+            const u = clamp01(d / Dd);
+            return e + (Hm - e) * (1 - (1 - u) * (1 - u));
+        };
+        const S = Math.round(70 * Q), C = Math.round(46 * Q);
+        dorsal = ensureOutward(buildPlateSolid({
+            lobes: [{ A: Ad, B: Bd }], tList: uniformStations(S, tEndD), C,
+            frame: { o: [0, 0, 0], ex: [1, 0, 0], ey: [0, 1, 0] },
+            camber: (a, b) => 0, thick,
+        }));
+        dorsal.planform = D2; dorsal.baseY = baseY; dorsal.hfin = hfin;
+    }
+
+    // ---- 胸鳍（一对，先做 +z 侧再镜像） ----
+    const pecSvg = sampleSvgPath(SVG.PEC_PATH, 30);
+    const pecAngle = CONFIG.PEC_RADIAN * Math.PI / 180;
+    let pecR, pecL, pecFrame;
+    {
+        const side = 1;
+        const s0 = backSurfaceAt(CONFIG.PEC_START_FRAC), s1 = backSurfaceAt(CONFIG.PEC_END_FRAC);
+        const r0 = s0.rad - CONFIG.PEC_SINK, r1 = s1.rad - CONFIG.PEC_SINK;
+        const Rh = [s0.x + CONFIG.PEC_BACKWARD_OFFSET, s0.mid + r0 * Math.cos(pecAngle), side * (r0 * Math.sin(pecAngle) + CONFIG.PEC_OUTWARD_OFFSET)];
+        const Rt = [s1.x + CONFIG.PEC_BACKWARD_OFFSET, s1.mid + r1 * Math.cos(pecAngle), side * (r1 * Math.sin(pecAngle) + CONFIG.PEC_OUTWARD_OFFSET)];
+        const rootLen = v3len(v3sub(Rt, Rh));
+        const axisX = v3norm(v3sub(Rt, Rh));
+        const ang = CONFIG.PEC_ANGLE_DEG * Math.PI / 180;
+        const outRaw = [0, -Math.sin(ang), side * Math.cos(ang)];
+        const axisY = v3norm(v3sub(outRaw, v3mul(axisX, v3dot(outRaw, axisX))));
+        const pec2D = pecSvg.map(p => {
+            const u = (p.x - PEC_BL) / (PEC_BR - PEC_BL);
+            const baseY = 19.267 + u * (19.565 - 19.267);
+            const w = Math.max(0, (p.y - baseY) / PEC_DROP);
+            return [u * rootLen + w * CONFIG.PEC_SWEEP, w * CONFIG.PEC_SPAN];
+        });
+        const D2 = dedupe2(pec2D);
+        const tipIdx = 1 + 30;                                // 第一段曲线终点 = 顶点
+        let TE = D2.slice(1, tipIdx + 1);
+        let LE = D2.slice(tipIdx, D2.length).reverse();
+        if (Math.hypot(LE[0][0] - D2[0][0], LE[0][1] - D2[0][1]) > 1e-6) LE.unshift(D2[0]);
+        const tongue = 0.3;
+        const Ad = dedupe2([[LE[0][0], LE[0][1] - tongue]].concat(LE)), Bd = dedupe2([[TE[0][0], TE[0][1] - tongue]].concat(TE));
+        const tEndP = tipStop(Ad, Bd, 0.09);
+        const segs = makeSegs([resample2(Ad, 200), resample2(Bd, 200)]);
+        segs.push(endChordSeg(Ad, Bd, tEndP));
+        const span = CONFIG.PEC_SPAN;
+        const Hr = 0.165 * fs, Ht = 0.07 * fs, Dd = 0.19;
+        const thick = (a, b) => {
+            const d = distSegs(a, b, segs);
+            const sg = b / span;
+            const Hm = Math.max(e, Ht + (Hr - Ht) * Math.pow(1 - clamp01(sg), 1.4));
+            const u = clamp01(d / Dd);
+            return e + (Hm - e) * (1 - (1 - u) * (1 - u));
+        };
+        const kap = 0.11 * cu;
+        const camber = (a, b) => -kap * Math.pow(clamp01(b / span), 2);
+        const S = Math.round(52 * Q), C = Math.round(40 * Q);
+        pecR = ensureOutward(buildPlateSolid({
+            lobes: [{ A: Ad, B: Bd }], tList: uniformStations(S, tEndP), C,
+            frame: { o: Rh, ex: axisX, ey: axisY }, camber, thick,
+        }));
+        pecL = ensureOutward(mirrorZ(pecR));
+        pecFrame = { Rh, Rt, axisX, axisY, rootLen };
+    }
+
+    // ---- 尾鳍（V 形，左右两瓣共用中缝顶点，天然封闭） ----
+    const bodyTipX = sw.xs[sw.xs.length - 1], bodyTipY = sw.mid[sw.mid.length - 1];
+    const tailSvgPts = sampleTailPath(SVG.TAIL_PATH, 60);
+    const openAng = CONFIG.TAIL_OPEN_ANGLE_DEG * Math.PI / 180, oc = Math.cos(openAng), os = Math.sin(openAng);
+    const finPts = tailSvgPts.map(p => {
+        const lx = (p.x - TAIL_NOTCH.x) * CONFIG.TAIL_FORK_SCALE, ly = -(p.y - TAIL_NOTCH.y) * CONFIG.TAIL_FORK_SCALE;
+        return { x: lx * oc + ly * os, z: -lx * os + ly * oc };
+    });
+    const leftHalf = extractLeftHalf(finPts);
+    const tilt = CONFIG.TAIL_TILT_DEG * Math.PI / 180;
+    const tailO = [bodyTipX + CONFIG.TAIL_NOTCH_DX, bodyTipY + CONFIG.TAIL_NOTCH_DY, 0];
+    const tailEx = [Math.cos(tilt), Math.sin(tilt), 0], tailEy = [0, 0, 1];
+    let fluke;
+    {
+        const H2 = dedupe2(leftHalf.map(p => [p.x, p.z]));
+        let ti = 0; for (let i = 0; i < H2.length; i++) if (H2[i][0] > H2[ti][0]) ti = i;
+        const R1 = H2[1];                                      // 根部外角（原轮廓里 V 形缺口的外端点）
+        const xr = R1[0];
+        let A = H2.slice(1, ti + 1);                            // 颈部侧边 → 前缘大弧 → 尖端
+        const TEc = H2.slice(ti, H2.length).reverse();          // 缺口 (0,0) → 后缘 → 尖端 ；reverse 后从缺口开始
+        const N = TEc[0];
+        const seam = []; const nSeam = 28;
+        for (let i = 0; i <= nSeam; i++) seam.push([xr + (N[0] - xr) * i / nSeam, 0]);
+        let Bc = seam.concat(TEc.slice(1));
+        A = dedupe2(A); Bc = dedupe2(Bc);
+        const seamLen = Math.abs(N[0] - xr);
+        const cB = cumLen2(Bc), tN = seamLen / cB[cB.length - 1];
+        // 站位：均匀 + 缺口精确站位；尖端前截止并用短弦封口
+        const tEndF = tipStop(A, Bc, 0.045);
+        const S = Math.round(84 * Q);
+        const tl = [];
+        for (let i = 0; i < S; i++) tl.push(tEndF * i / (S - 1));
+        for (let i = tl.length - 1; i >= 0; i--) if (Math.abs(tl[i] - tN) < 0.45 * tEndF / S) tl.splice(i, 1);
+        tl.push(tN); tl.sort((p, q) => p - q);
+        const tl2 = tl;
+        const mir = (L) => L.map(p => [p[0], -p[1]]);
+        const teOnly = Bc.slice(Math.max(0, seam.length - 1));
+        const free = [resample2(A, 260), resample2(teOnly, 200), resample2(mir(A), 260), resample2(mir(teOnly), 200)];
+        const segs = makeSegs(free);
+        const ec = endChordSeg(A, Bc, tEndF);
+        segs.push(ec, [ec[0], -ec[1], ec[2], -ec[3]]);
+        let zmax = 0; for (const p of H2) zmax = Math.max(zmax, Math.abs(p[1]));
+        const Hc = 0.19 * fs, Ht = 0.075 * fs, Dd = 0.26;
+        const thick = (a, b) => {
+            const d = distSegs(a, b, segs);
+            const sg = Math.abs(b) / zmax;
+            let Hm = Ht + (Hc - Ht) * Math.pow(1 - clamp01(sg * sg), 1.15);   // 平方：中缝处光滑，无尖脊
+            Hm *= 1 + 0.18 * sstep(-0.1, -0.5, a);                 // 根部略加厚，过渡进尾柄
+            Hm = Math.max(e, Hm);
+            const u = clamp01(d / Dd);
+            return e + (Hm - e) * (1 - (1 - u) * (1 - u));
+        };
+        const kap = 0.16 * cu;
+        const camber = (a, b) => -kap * Math.pow(Math.abs(b) / zmax, 2) * sstep(-0.55, 0.15, a);
+        const C = Math.round(58 * Q);
+        fluke = buildPlateSolid({
+            lobes: [{ A, B: Bc }, { A: mir(A), B: mir(Bc) }], tList: tl2, C,
+            frame: { o: tailO, ex: tailEx, ey: tailEy }, camber, thick,
+        });
+        ensureOutward(fluke);
+        fluke.outline = H2; fluke.zmax = zmax; fluke.xr = xr;
+    }
+    const parts = { body, dorsal, pecR, pecL, fluke };
+    if (P.relief > 0) Object.assign(parts, buildReliefs(prof, P.relief, Q));
+    return {
+        P, prof, scale, sw, body, dorsal, pecR, pecL, fluke,
+        parts,
+        bodyTip: [bodyTipX, bodyTipY], tailO, tailEx, pecFrame, dorsalPts, finPts, leftHalf, backSurfaceAt,
+    };
+}
+
+// ---- 以下函数原样取自原始 orca.html（保证轮廓/参数完全一致）----
+
+function samplePathDense(d, stepsPerSegment = 50, totalResample = 800) {
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i = 0, x = 0, y = 0;
+                const rawPts = [];
+                const num = () => parseFloat(toks[i++]);
+                const bez = (t, p0, p1, p2, p3) => {
+                    const mt = 1 - t;
+                    return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3;
+                };
+                while (i < toks.length) {
+                    const c = toks[i++].toUpperCase();
+                    if (c === 'M' || c === 'L') {
+                        x = num(); y = num(); rawPts.push({ x, y });
+                    } else if (c === 'C') {
+                        const c1x = num(), c1y = num(), c2x = num(), c2y = num(), ex = num(), ey = num();
+                        for (let s = 1; s <= stepsPerSegment; s++) {
+                            const t = s / stepsPerSegment;
+                            rawPts.push({ x: bez(t, x, c1x, c2x, ex), y: bez(t, y, c1y, c2y, ey) });
+                        }
+                        x = ex; y = ey;
+                    }
+                }
+                return catmullRomResample(rawPts, totalResample, true);
+            }
+
+function catmullRomResample(points, targetCount, closed = true) {
+                if (points.length < 2) return points;
+                const n = points.length;
+                const src = closed ? [...points, points[0], points[1], points[2]] : points;
+                const len = closed ? n : n - 1;
+                const arcLen = [0];
+                for (let i = 1; i < src.length; i++) {
+                    const dx = src[i].x - src[i - 1].x, dy = src[i].y - src[i - 1].y;
+                    arcLen.push(arcLen[i - 1] + Math.sqrt(dx * dx + dy * dy));
+                }
+                const totalLen = arcLen[arcLen.length - 1];
+                const result = [];
+                for (let k = 0; k < targetCount; k++) {
+                    const t = (k / targetCount) * totalLen;
+                    let seg = 0;
+                    while (seg < arcLen.length - 2 && arcLen[seg + 1] < t) seg++;
+                    const segStart = arcLen[seg], segEnd = arcLen[seg + 1];
+                    const localT = (segEnd - segStart) > 0 ? (t - segStart) / (segEnd - segStart) : 0;
+                    const p0 = src[Math.max(0, seg - 1)], p1 = src[seg], p2 = src[seg + 1], p3 = src[Math.min(src.length - 1, seg + 2)];
+                    const tt = localT, tt2 = tt * tt, tt3 = tt2 * tt;
+                    const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * tt + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * tt2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * tt3);
+                    const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * tt + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * tt2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * tt3);
+                    result.push({ x, y });
+                }
+                return result;
+            }
+
+function sampleSvgPath(d, samples = 40) {
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i = 0, x = 0, y = 0; const pts = [];
+                const num = () => parseFloat(toks[i++]);
+                const bez = (t, p0, p1, p2, p3) => { const mt = 1 - t; return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3; };
+                while (i < toks.length) { const c = toks[i++].toUpperCase(); if (c === 'M' || c === 'L') { x = num(); y = num(); pts.push({x,y}); } else if (c === 'C') { const c1x=num(),c1y=num(),c2x=num(),c2y=num(),ex=num(),ey=num(); for (let s=1;s<=samples;s++) { const t=s/samples; pts.push({x:bez(t,x,c1x,c2x,ex), y:bez(t,y,c1y,c2y,ey)}); } x=ex; y=ey; } }
+                if (pts.length > 0) pts.push({ x: pts[0].x, y: pts[0].y });
+                return pts;
+            }
+
+function sampleTailPath(d, samples=80) { 
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i=0,x=0,y=0; const pts=[];
+                const num=()=>parseFloat(toks[i++]);
+                const bez=(t,p0,p1,p2,p3)=>{const mt=1-t; return mt*mt*mt*p0+3*mt*mt*t*p1+3*mt*t*t*p2+t*t*t*p3;};
+                while(i<toks.length){const c=toks[i++].toUpperCase(); if(c==='M'||c==='L'){x=num();y=num();pts.push({x,y});}else if(c==='C'){const c1x=num(),c1y=num(),c2x=num(),c2y=num(),ex=num(),ey=num(); for(let s=1;s<=samples;s++){const t=s/samples; pts.push({x:bez(t,x,c1x,c2x,ex), y:bez(t,y,c1y,c2y,ey)});} x=ex; y=ey;}}
+                if(pts.length>0) pts.push({x:pts[0].x, y:pts[0].y});
+                return pts;
+            }
+
+function extractLeftHalf(pts) {
+                const n = pts.length;
+                const crossings = [];
+                for (let i = 0; i < n; i++) {
+                    const a = pts[i], b = pts[(i+1)%n];
+                    if ((a.z < 0 && b.z >= 0) || (a.z >= 0 && b.z < 0)) {
+                        const t = a.z / (a.z - b.z);
+                        const x = a.x + t * (b.x - a.x);
+                        crossings.push({ index: i, point: { x, z: 0 } });
+                    }
+                }
+                if (crossings.length < 2) return null;
+                const c1 = crossings[0], c2 = crossings[1];
+                const startIdx = c1.index, endIdx = c2.index;
+                const half = [c1.point];
+                if (endIdx >= startIdx) {
+                    for (let i = startIdx + 1; i <= endIdx; i++) half.push(pts[i % n]);
+                } else {
+                    for (let i = startIdx + 1; i < n; i++) half.push(pts[i]);
+                    for (let i = 0; i <= endIdx; i++) half.push(pts[i]);
+                }
+                half.push(c2.point);
+                let avgZ = 0; for (const p of half) avgZ += p.z; avgZ /= half.length;
+                if (avgZ > 0) {
+                    half.length = 0;
+                    half.push(c2.point);
+                    if (endIdx + 1 < startIdx) {
+                        for (let i = endIdx + 1; i <= startIdx; i++) half.push(pts[i % n]);
+                    } else {
+                        for (let i = endIdx + 1; i < n; i++) half.push(pts[i]);
+                        for (let i = 0; i <= startIdx; i++) half.push(pts[i]);
+                    }
+                    half.push(c1.point);
+                }
+                return half;
+            }
+
+function computeSweptProfile(poly, nSlices = CONFIG.SWEPT_SLICES) {
+                let minX = 1e9, maxX = -1e9;
+                let polyMinY = Infinity, polyMaxY = -Infinity;
+                for (const p of poly) {
+                    minX = Math.min(minX, p.x);
+                    maxX = Math.max(maxX, p.x);
+                    polyMinY = Math.min(polyMinY, p.y);
+                    polyMaxY = Math.max(polyMaxY, p.y);
+                }
+                const totalX = maxX - minX, step = totalX / nSlices;
+                const polyHeight = polyMaxY - polyMinY;
+                const tailLiftAmount = 0.1 * polyHeight;
+                const xs = [], midRaw = [], radRaw = [];
+                let lastM = 0;
+                for (let s = 0; s <= nSlices; s++) {
+                    const x = minX + s * step;
+                    let top = -Infinity, bot = Infinity;
+                    for (let i = 0; i < poly.length; i++) {
+                        const a = poly[i], b = poly[(i + 1) % poly.length];
+                        if (Math.abs(a.x - b.x) < 1e-9) continue;
+                        if ((a.x - x) * (b.x - x) > 0) continue;
+                        const y = a.y + (x - a.x) / (b.x - a.x) * (b.y - a.y);
+                        if (y > top) top = y;
+                        if (y < bot) bot = y;
+                    }
+                    let m, r;
+                    if (isFinite(top) && isFinite(bot)) { m = (top + bot) / 2; r = (top - bot) / 2; if (r < 0) r = 0; lastM = m; }
+                    else { m = lastM; r = 0; }
+                    xs.push(x); midRaw.push(m); radRaw.push(Math.max(0, r));
+                }
+                function smoothGaussian(arr, sigma, iterations) {
+                    const len = arr.length, half = Math.ceil(sigma * 3), kernel = [];
+                    let sumK = 0;
+                    for (let j = -half; j <= half; j++) { const val = Math.exp(-0.5 * (j / sigma) * (j / sigma)); kernel.push(val); sumK += val; }
+                    for (let i = 0; i < kernel.length; i++) kernel[i] /= sumK;
+                    let work = [...arr];
+                    for (let iter = 0; iter < iterations; iter++) {
+                        const temp = [...work];
+                        for (let i = 0; i < len; i++) { let sum = 0; for (let j = -half; j <= half; j++) { const idx = Math.min(len - 1, Math.max(0, i + j)); sum += temp[idx] * kernel[j + half]; } work[i] = sum; }
+                    }
+                    return work;
+                }
+                function removeDents(arr, window = 10) {
+                    const res = [...arr];
+                    for (let i = 1; i < res.length - 1; i++) {
+                        const left = Math.max(0, i - window), right = Math.min(res.length - 1, i + window);
+                        let minNeighbor = Infinity;
+                        for (let j = left; j <= right; j++) { if (j === i) continue; if (res[j] < minNeighbor) minNeighbor = res[j]; }
+                        if (res[i] < minNeighbor) res[i] = minNeighbor;
+                    }
+                    return res;
+                }
+                function smoothstep(edge0, edge1, x) {
+                    const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+                    return t * t * (3 - 2 * t);
+                }
+
+                let radSmooth = smoothGaussian(radRaw, 3.0, 2);
+                let midSmooth = smoothGaussian(midRaw, 2.0, 1);
+                radSmooth = removeDents(radSmooth, 8);
+                radSmooth = smoothGaussian(radSmooth, 1.5, 1);
+                let maxIdx = 0, maxVal = 0;
+                for (let i = 0; i < radSmooth.length; i++) { if (radSmooth[i] > maxVal) { maxVal = radSmooth[i]; maxIdx = i; } }
+                for (let i = maxIdx - 1; i >= 0; i--) { if (radSmooth[i] > radSmooth[i + 1]) radSmooth[i] = radSmooth[i + 1]; }
+                for (let i = maxIdx + 1; i < radSmooth.length; i++) { if (radSmooth[i] > radSmooth[i - 1]) radSmooth[i] = radSmooth[i - 1]; }
+                const tailRatio = 0.14, headRatio = 0.11;
+                const tailLen = totalX * tailRatio, headLen = totalX * headRatio;
+                const tailEnd = xs.findIndex(x => x >= minX + tailLen);
+                if (tailEnd > 2) { const rBody = radSmooth[tailEnd]; for (let i = 0; i <= tailEnd; i++) { const t = (xs[i] - minX) / tailLen; const ease = 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3); radSmooth[i] = Math.min(radSmooth[i], rBody * ease); } }
+                const headStart = xs.findIndex(x => x >= maxX - headLen);
+                if (headStart < nSlices - 2) { const rBody = radSmooth[headStart]; for (let i = headStart; i <= nSlices; i++) { const t = (maxX - xs[i]) / headLen; const ease = 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3); radSmooth[i] = Math.min(radSmooth[i], rBody * ease); } }
+                radSmooth[0] = 0; radSmooth[nSlices] = 0;
+                radSmooth = smoothGaussian(radSmooth, 1.2, 1); radSmooth[0] = 0; radSmooth[nSlices] = 0;
+
+                const tailLiftStartFrac = 0.75;
+                for (let i = 0; i <= nSlices; i++) {
+                    const t = (xs[i] - minX) / totalX;
+                    if (t > tailLiftStartFrac) {
+                        const liftT = smoothstep(tailLiftStartFrac, 1.0, t);
+                        midSmooth[i] += tailLiftAmount * liftT;
+                    }
+                }
+
+                                return { xs, mid: midSmooth, rad: radSmooth };
+            }
+
+
+function sampleBrowPath(d, steps = 40) { 
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i = 0, x = 0, y = 0; const pts = [];
+                const num = () => parseFloat(toks[i++]);
+                const bez = (t, p0, p1, p2, p3) => { const mt = 1 - t; return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3; };
+                while (i < toks.length) { const c = toks[i++].toUpperCase(); if (c==='M'||c==='L') { x=num(); y=num(); pts.push({x,y}); } else if (c==='C') { const c1x=num(),c1y=num(),c2x=num(),c2y=num(),ex=num(),ey=num(); for (let s=1;s<=steps;s++) { const t=s/steps; pts.push({x:bez(t,x,c1x,c2x,ex), y:bez(t,y,c1y,c2y,ey)}); } x=ex; y=ey; } }
+                return pts;
+            }
+
+
+// =====================================================================
+//  查看器 + 打印导出（three.js r147，与原文件相同的 CDN）
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const ui = {
+    len: $('p-len'), wall: $('p-wall'), fin: $('p-fin'), curl: $('p-curl'), relief: $('p-relief'),
+    flat: $('p-flat'), flatDepth: $('p-flatdepth'),
+    shade: $('p-shade'), wire: $('p-wire'), rot: $('p-rot'), merged: $('p-merged'),
+    btnSTL: $('btn-stl'), btnCheck: $('btn-check'), info: $('info'), status: $('status'),
+};
+const MANIFOLD_URL = 'https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/manifold.js';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(3.6, 2.3, 5.4);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = false;
+renderer.toneMapping = THREE.NoToneMapping;
+$('app').appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = CONFIG.AUTO_ROTATE_SPEED;
+controls.minDistance = 2.5;
+controls.maxDistance = 10;
+controls.maxPolarAngle = Math.PI * 0.62;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x6677aa, 0.55));
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.75); keyLight.position.set(-3, 5, 4); scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight(0xaabbff, 0.25); rimLight.position.set(4, 1, -3); scene.add(rimLight);
+
+const model = new THREE.Group();
+scene.add(model);
+
+// ---------- 材质（平涂 = 原版外观；着色 = 便于检查弧度） ----------
+const BLUE = CONFIG.COLOR_BODY_BLUE;
+let mrTex = null;
+const bellyUniforms = { uMR: { value: null }, uMin: { value: 0 }, uMax: { value: 1 } };
+function injectBelly(material) {
+    material.extensions = { derivatives: true };
+    material.onBeforeCompile = (sh) => {
+        sh.uniforms.uMR = bellyUniforms.uMR; sh.uniforms.uMin = bellyUniforms.uMin; sh.uniforms.uMax = bellyUniforms.uMax;
+        sh.vertexShader = sh.vertexShader
+            .replace('#include <common>', '#include <common>\nattribute float aBody;\nvarying float vBody;\nvarying vec3 vPos;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPos = position;\nvBody = aBody;');
+        sh.fragmentShader = sh.fragmentShader
+            .replace('#include <common>', '#include <common>\nvarying vec3 vPos;\nvarying float vBody;\nuniform sampler2D uMR;\nuniform float uMin, uMax;')
+            .replace('#include <color_fragment>', `#include <color_fragment>
+            {
+                float u = clamp((vPos.x - uMin) / (uMax - uMin), 0.0, 1.0);
+                vec2 mr = texture2D(uMR, vec2(u, 0.5)).rg;
+                float midY = mr.r;
+                float ang = 3.14159265 - abs(atan(vPos.z, vPos.y - midY));
+                float baseScale = 0.77 * 1.1;
+                float uCenter = 0.28, uHalf = 0.245 * baseScale, angMax = 0.84 * baseScale;
+                float headFactor = 1.0 - smoothstep(0.18, 0.52, u);
+                float angMaxAdjusted = angMax * (1.0 + 0.7 * headFactor);
+                float uu = (0.16 + 0.49 * u - uCenter) / uHalf;
+                float nn = ang / angMaxAdjusted;
+                float rr = uu * uu + nn * nn;
+                float tailZone = smoothstep(0.40, 0.58, u) * (1.0 - smoothstep(0.80, 0.86, u));
+                float peak = 0.78, bumpWidth = 0.11, bumpStrength = 1.0;
+                float d = nn - peak;
+                float bump = tailZone * bumpStrength * exp(-d*d / (bumpWidth*bumpWidth));
+                float threshold = 1.0 + bump;
+                float aa = fwidth(rr) * 1.2 + 2e-4;
+                float a = 1.0 - smoothstep(threshold - aa, threshold + aa, rr);
+                a *= vBody;            // 仅身体顶点参与白斑（合并预览里鳍保持蓝色）
+                diffuseColor.rgb = mix(vec3(0.302, 0.420, 0.996), vec3(1.0), a);
+            }`);
+    };
+}
+const matBodyFlat = new THREE.MeshBasicMaterial({ side: THREE.FrontSide });
+const matBodyShaded = new THREE.MeshLambertMaterial({ side: THREE.FrontSide });
+injectBelly(matBodyFlat); injectBelly(matBodyShaded);
+const matFinFlat = new THREE.MeshBasicMaterial({ color: BLUE, side: THREE.FrontSide });
+const matFinShaded = new THREE.MeshLambertMaterial({ color: BLUE, side: THREE.FrontSide });
+const matMerged = { flat: null, shaded: null };
+const matWhiteFlat = new THREE.MeshBasicMaterial({ color: CONFIG.COLOR_WHITE, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const matWhiteShaded = new THREE.MeshLambertMaterial({ color: CONFIG.COLOR_WHITE, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const RELIEF_KEYS = ['browR', 'browL', 'eyeR', 'eyeL'];
+
+const meshes = {};
+let cur = null;                 // 当前几何
+let REF_LEN = null;             // 模型长度（模型单位），用于 mm 换算
+let mergedState = null;         // 合并预览结果
+
+function toGeometry(m) {
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array(m.verts.length * 3);
+    for (let i = 0; i < m.verts.length; i++) { pos[i * 3] = m.verts[i][0]; pos[i * 3 + 1] = m.verts[i][1]; pos[i * 3 + 2] = m.verts[i][2]; }
+    const idx = new Uint32Array(m.tris.length * 3);
+    for (let i = 0; i < m.tris.length; i++) { idx[i * 3] = m.tris[i][0]; idx[i * 3 + 1] = m.tris[i][1]; idx[i * 3 + 2] = m.tris[i][2]; }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeVertexNormals();
+    return g;
+}
+function typedToGeometry(pos, idx) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeVertexNormals();
+    return g;
+}
+function disposeMesh(k) { const m = meshes[k]; if (!m) return; model.remove(m); m.geometry.dispose(); delete meshes[k]; }
+
+// ---------- 构建/刷新 ----------
+function readParams() {
+    const lenMM = Math.max(30, parseFloat(ui.len.value) || 100);
+    const wallMM = Math.max(0.4, parseFloat(ui.wall.value) || 1.0);
+    return {
+        lenMM, wallMM,
+        finScale: parseFloat(ui.fin.value) || 1,
+        curl: parseFloat(ui.curl.value),
+        flat: ui.flat.checked, flatDepth: parseFloat(ui.flatDepth.value) || 0,
+        reliefMM: parseFloat(ui.relief.value) || 0,
+    };
+}
+function updateLabels() {
+    $('v-len').textContent = ui.len.value + ' mm';
+    $('v-wall').textContent = (+ui.wall.value).toFixed(2) + ' mm';
+    $('v-fin').textContent = '×' + (+ui.fin.value).toFixed(2);
+    $('v-curl').textContent = '×' + (+ui.curl.value).toFixed(2);
+    $('v-relief').textContent = (+ui.relief.value).toFixed(2) + ' mm';
+    $('v-flatdepth').textContent = (+ui.flatDepth.value).toFixed(2);
+}
+function mmPerUnit(p) { return p.lenMM / (REF_LEN || 5.162); }
+
+function matFor(key, shaded) {
+    if (key === 'body' || key === 'merged') return shaded ? matBodyShaded : matBodyFlat;
+    if (RELIEF_KEYS.indexOf(key) >= 0) return shaded ? matWhiteShaded : matWhiteFlat;
+    return shaded ? matFinShaded : matFinFlat;
+}
+function applyMaterials() {
+    const shaded = ui.shade.checked, showM = ui.merged.checked && !!meshes.merged;
+    for (const key of Object.keys(meshes)) {
+        const m = meshes[key]; if (!m) continue;
+        m.material = matFor(key, shaded);
+        m.visible = key === 'merged' ? showM : (RELIEF_KEYS.indexOf(key) >= 0 ? true : !showM);   // 浮雕在合并预览里作为白色覆盖层
+    }
+    for (const mt of [matBodyFlat, matBodyShaded, matFinFlat, matFinShaded, matWhiteFlat, matWhiteShaded]) mt.wireframe = ui.wire.checked;
+    controls.autoRotate = ui.rot.checked;
+}
+
+function rebuild() {
+    const p = readParams();
+    updateLabels();
+    const t0 = performance.now();
+    if (REF_LEN === null) {                 // 第一次先用默认参数量出长度
+        const probe = buildOrca({ minWall: 0.055, plateQ: 0.4, bodyNS: 40, bodyNR: 24 });
+        let mn = Infinity, mx = -Infinity;
+        for (const m of Object.values(probe.parts)) for (const v of m.verts) { if (v[0] < mn) mn = v[0]; if (v[0] > mx) mx = v[0]; }
+        REF_LEN = mx - mn;
+    }
+    const k = mmPerUnit(p);
+    cur = buildOrca({ minWall: p.wallMM / k, finScale: p.finScale, curl: p.curl, relief: p.reliefMM / k });
+    const prof = cur.prof;
+    // 贴图（腹部白斑）仍用原版 61 个采样
+    const sw = cur.sw, nSw = sw.mid.length;
+    const mrData = new Uint16Array(nSw * 2);
+    for (let i = 0; i < nSw; i++) { mrData[i * 2] = THREE.DataUtils.toHalfFloat(sw.mid[i]); mrData[i * 2 + 1] = THREE.DataUtils.toHalfFloat(sw.rad[i]); }
+    if (mrTex) mrTex.dispose();
+    mrTex = new THREE.DataTexture(mrData, nSw, 1, THREE.RGFormat, THREE.HalfFloatType);
+    mrTex.minFilter = mrTex.magFilter = THREE.LinearFilter;
+    mrTex.needsUpdate = true;
+    bellyUniforms.uMR.value = mrTex; bellyUniforms.uMin.value = sw.xs[0]; bellyUniforms.uMax.value = sw.xs[sw.xs.length - 1];
+
+    for (const key of Object.keys(meshes)) disposeMesh(key);
+    mergedState = null; ui.merged.checked = false; ui.merged.disabled = true;
+    for (const key of Object.keys(cur.parts)) {
+        const g = toGeometry(cur.parts[key]);
+        if (key === 'body') g.setAttribute('aBody', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(1), 1));
+        const mesh = new THREE.Mesh(g, matFor(key, true));
+        meshes[key] = mesh; model.add(mesh);
+    }
+    applyMaterials();
+    refreshInfo(performance.now() - t0);
+}
+
+function refreshInfo(ms) {
+    const p = readParams(), k = mmPerUnit(p);
+    let tris = 0, open = 0, bad = 0, vol = 0;
+    for (const m of Object.values(cur.parts)) { const s = meshStats(m.verts, m.tris); tris += s.tris; open += s.open; bad += s.nonManifold + s.degen; vol += s.volume; }
+    const bb = bounds(cur.parts);
+    const dx = (bb.max[0] - bb.min[0]) * k, dy = (bb.max[1] - bb.min[1]) * k, dz = (bb.max[2] - bb.min[2]) * k;
+    ui.info.innerHTML =
+        `尺寸 <b>${dx.toFixed(1)} × ${dz.toFixed(1)} × ${dy.toFixed(1)} mm</b>（长×宽×高）<br>` +
+        `零件：身体 / 背鳍 / 胸鳍×2 / 尾鳍 / 眼斑·眼睛浮雕 · 共 ${tris.toLocaleString()} 三角面<br>` +
+        `各零件封闭检查：${open === 0 && bad === 0 ? '<b class="ok">全部水密 ✓</b>' : '<b class="bad">发现问题 ✗</b>'}　` +
+        `<span class="dim">（体积≈${(vol * k * k * k / 1000).toFixed(1)} cm³，未计重叠）</span><br>` +
+        `边缘最薄 <b>${p.wallMM.toFixed(2)} mm</b> · 重建用时 ${ms.toFixed(0)} ms`;
+}
+function bounds(parts) {
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const m of Object.values(parts)) for (const v of m.verts) for (let a = 0; a < 3; a++) { if (v[a] < mn[a]) mn[a] = v[a]; if (v[a] > mx[a]) mx[a] = v[a]; }
+    return { min: mn, max: mx };
+}
+
+// ---------- 布尔合并（manifold-3d，WASM） ----------
+let _manifoldPromise = null;
+function getManifold() {
+    if (!_manifoldPromise) {
+        _manifoldPromise = (async () => {
+            if (typeof window.ORCA_MANIFOLD_LOADER === 'function') return await window.ORCA_MANIFOLD_LOADER();
+            const mod = await import(MANIFOLD_URL);
+            const wasm = await mod.default(); wasm.setup(); return wasm;
+        })();
+        _manifoldPromise.catch(() => { _manifoldPromise = null; });
+    }
+    return _manifoldPromise;
+}
+function partToManifold(wasm, m) {
+    const vp = new Float32Array(m.verts.length * 3);
+    for (let i = 0; i < m.verts.length; i++) { vp[i * 3] = m.verts[i][0]; vp[i * 3 + 1] = m.verts[i][1]; vp[i * 3 + 2] = m.verts[i][2]; }
+    const tv = new Uint32Array(m.tris.length * 3);
+    for (let i = 0; i < m.tris.length; i++) { tv[i * 3] = m.tris[i][0]; tv[i * 3 + 1] = m.tris[i][1]; tv[i * 3 + 2] = m.tris[i][2]; }
+    const man = wasm.Manifold.ofMesh(new wasm.Mesh({ numProp: 3, vertProperties: vp, triVerts: tv }));
+    if (man.status() !== 'NoError') throw new Error('零件不是合法流形：' + man.status());
+    return man;
+}
+// 返回 {pos:Float32Array, idx:Uint32Array, unioned:boolean}
+async function makePrintMesh(p) {
+    let wasm = null, err = null;
+    try { wasm = await getManifold(); } catch (e) { err = e; console.warn('manifold 加载失败：', e); }
+    if (wasm) {
+        const list = Object.keys(cur.parts).map(k => partToManifold(wasm, cur.parts[k]));
+        let U = wasm.Manifold.union(list);
+        if (U.status() !== 'NoError') throw new Error('合并失败：' + U.status());
+        if (p.flat && p.flatDepth > 0) {
+            const yMin = U.boundingBox().min[1];
+            U = U.trimByPlane({ x: 0, y: 1, z: 0 }, yMin + p.flatDepth);
+        }
+        const out = U.getMesh();
+        if (out.numProp !== 3) throw new Error('意外的顶点属性数 ' + out.numProp);
+        return { pos: new Float32Array(out.vertProperties), idx: new Uint32Array(out.triVerts), unioned: true };
+    }
+    // 兜底：不联网时导出重叠壳体（切片软件会按非零环绕规则自动并集）
+    let nv = 0, nt = 0;
+    const L = Object.keys(cur.parts).map(k => cur.parts[k]);
+    for (const m of L) { nv += m.verts.length; nt += m.tris.length; }
+    const pos = new Float32Array(nv * 3), idx = new Uint32Array(nt * 3);
+    let vo = 0, to = 0;
+    for (const m of L) {
+        for (let i = 0; i < m.verts.length; i++) { pos[(vo + i) * 3] = m.verts[i][0]; pos[(vo + i) * 3 + 1] = m.verts[i][1]; pos[(vo + i) * 3 + 2] = m.verts[i][2]; }
+        for (let i = 0; i < m.tris.length; i++) { idx[(to + i) * 3] = m.tris[i][0] + vo; idx[(to + i) * 3 + 1] = m.tris[i][1] + vo; idx[(to + i) * 3 + 2] = m.tris[i][2] + vo; }
+        vo += m.verts.length; to += m.tris.length;
+    }
+    return { pos, idx, unioned: false, err };
+}
+function flatStats(pos, idx) {
+    const nT = idx.length / 3, nV = pos.length / 3;
+    const dir = new Map(); let degen = 0, vol = 0;
+    for (let t = 0; t < nT; t++) {
+        const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+        if (a === b || b === c || a === c) { degen++; continue; }
+        dir.set(a * nV + b, (dir.get(a * nV + b) || 0) + 1); dir.set(b * nV + c, (dir.get(b * nV + c) || 0) + 1); dir.set(c * nV + a, (dir.get(c * nV + a) || 0) + 1);
+        const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2], bx = pos[b * 3], by = pos[b * 3 + 1], bz = pos[b * 3 + 2], cx = pos[c * 3], cy = pos[c * 3 + 1], cz = pos[c * 3 + 2];
+        vol += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
+    }
+    let open = 0, nonMan = 0;
+    for (const [key, c] of dir) {
+        const u = Math.floor(key / nV), v = key - u * nV;
+        const r = dir.get(v * nV + u) || 0;
+        if (c !== 1 || r !== 1) { if (c > 1 || r > 1) nonMan++; else open++; }
+    }
+    return { verts: nV, tris: nT, open, nonMan, degen, vol };
+}
+
+function setStatus(msg, cls) { ui.status.textContent = msg; ui.status.className = cls || ''; }
+
+async function doCheck() {
+    const p = readParams(), k = mmPerUnit(p);
+    setStatus('正在做布尔合并与检查…');
+    try {
+        const r = await makePrintMesh(p);
+        const s = flatStats(r.pos, r.idx);
+        mergedState = r;
+        const geo = typedToGeometry(r.pos, r.idx);
+        {   // 合并实体里哪些顶点在身体表面上（白斑只画在身体上）
+            const nV = r.pos.length / 3, ab = new Float32Array(nV), F = getBodyFns();
+            for (let i = 0; i < nV; i++) {
+                const x = r.pos[i * 3], y = r.pos[i * 3 + 1], z = r.pos[i * 3 + 2];
+                if (x < F.x0 - 1e-3 || x > F.x1 + 1e-3) continue;
+                ab[i] = Math.abs(Math.hypot(y - F.fMid(x), z) - Math.sqrt(Math.max(0, F.fR2(x)))) < 0.004 ? 1 : 0;
+            }
+            geo.setAttribute('aBody', new THREE.BufferAttribute(ab, 1));
+        }
+        disposeMesh('merged');
+        meshes.merged = new THREE.Mesh(geo, matBodyShaded); model.add(meshes.merged);
+        ui.merged.disabled = false; ui.merged.checked = true; applyMaterials();
+        const ok = s.open === 0 && s.nonMan === 0 && s.degen === 0;
+        ui.info.innerHTML +=
+            `<hr><b>打印网格</b>（${r.unioned ? '已布尔合并为单一实体' : '未联网：导出为重叠壳体'}）<br>` +
+            `${s.verts.toLocaleString()} 顶点 · ${s.tris.toLocaleString()} 三角面<br>` +
+            `水密/流形：${ok ? '<b class="ok">通过 ✓</b>' : '<b class="bad">未通过（开边 ' + s.open + '，非流形边 ' + s.nonMan + '，退化面 ' + s.degen + '）</b>'}<br>` +
+            `体积 ≈ <b>${(s.vol * k * k * k / 1000).toFixed(1)} cm³</b>`;
+        setStatus(r.unioned ? '合并完成，已在视图中显示合并后的实体。' : 'manifold 库未能加载，使用重叠壳体（可联网后重试）。', r.unioned ? 'ok' : 'bad');
+    } catch (e) { console.error(e); setStatus('检查失败：' + e.message, 'bad'); }
+}
+
+// ---------- STL 导出（二进制，毫米，Z 向上，居中落床） ----------
+function buildSTL(pos, idx, k) {
+    const nV = pos.length / 3, nT = idx.length / 3;
+    const X = new Float32Array(nV), Y = new Float32Array(nV), Z = new Float32Array(nV);
+    let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity, mnZ = Infinity;
+    for (let i = 0; i < nV; i++) {
+        const x = pos[i * 3] * k, y = pos[i * 3 + 1] * k, z = pos[i * 3 + 2] * k;
+        X[i] = x; Y[i] = -z; Z[i] = y;                      // (x,y,z) → (x,-z,y)：旋转，不镜像
+        if (X[i] < mnX) mnX = X[i]; if (X[i] > mxX) mxX = X[i];
+        if (Y[i] < mnY) mnY = Y[i]; if (Y[i] > mxY) mxY = Y[i];
+        if (Z[i] < mnZ) mnZ = Z[i];
+    }
+    const cx = (mnX + mxX) / 2, cy = (mnY + mxY) / 2;
+    for (let i = 0; i < nV; i++) { X[i] -= cx; Y[i] -= cy; Z[i] -= mnZ; }
+    const buf = new ArrayBuffer(84 + nT * 50), dv = new DataView(buf);
+    const head = 'orca print-ready STL (mm, Z-up)';
+    for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i));
+    dv.setUint32(80, nT, true);
+    let o = 84;
+    for (let t = 0; t < nT; t++) {
+        const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+        const ux = X[b] - X[a], uy = Y[b] - Y[a], uz = Z[b] - Z[a], vx = X[c] - X[a], vy = Y[c] - Y[a], vz = Z[c] - Z[a];
+        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+        dv.setFloat32(o, nx, true); dv.setFloat32(o + 4, ny, true); dv.setFloat32(o + 8, nz, true); o += 12;
+        for (const q of [a, b, c]) { dv.setFloat32(o, X[q], true); dv.setFloat32(o + 4, Y[q], true); dv.setFloat32(o + 8, Z[q], true); o += 12; }
+        dv.setUint16(o, 0, true); o += 2;
+    }
+    return { buf, size: [mxX - mnX, mxY - mnY] };
+}
+function download(name, data, type) {
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(new Blob([data], { type: type || 'application/octet-stream' }));
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+async function doExportSTL() {
+    const p = readParams(), k = mmPerUnit(p);
+    setStatus('正在合并并导出 STL…');
+    try {
+        const r = (mergedState && ui.merged.checked) ? mergedState : await makePrintMesh(p);
+        const { buf } = buildSTL(r.pos, r.idx, k);
+        download(`orca_${Math.round(p.lenMM)}mm.stl`, buf, 'model/stl');
+        setStatus(r.unioned ? '已导出：单一实体 STL（毫米，Z 向上，已落床居中）。' : '已导出（重叠壳体版，未联网）。', r.unioned ? 'ok' : 'bad');
+    } catch (e) { console.error(e); setStatus('导出失败：' + e.message, 'bad'); }
+}
+
+// ---------- 事件 ----------
+let timer = null;
+function schedule() { updateLabels(); clearTimeout(timer); timer = setTimeout(rebuild, 140); }
+for (const el of [ui.len, ui.wall, ui.fin, ui.curl, ui.relief, ui.flat, ui.flatDepth]) el.addEventListener('input', schedule);
+for (const el of [ui.shade, ui.wire, ui.rot, ui.merged]) el.addEventListener('change', applyMaterials);
+ui.btnSTL.addEventListener('click', doExportSTL);
+ui.btnCheck.addEventListener('click', doCheck);
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+});
+window.__orca = { rebuild, doCheck, doExportSTL, makePrintMesh, buildSTL, flatStats, get cur() { return cur; }, readParams, ui };
+
+rebuild();
+const clock = new THREE.Clock();
+function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    model.position.y = Math.sin(t * CONFIG.FLOAT_SPEED) * CONFIG.FLOAT_AMPLITUDE;
+    controls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+            document.getElementById('btn-fold').addEventListener('click', function () {
+                var p = document.getElementById('panel'); p.classList.toggle('collapsed');
+                this.textContent = p.classList.contains('collapsed') ? '展开' : '收起';
+            });
+        })();
+    </script>
+</body>
+</html>
