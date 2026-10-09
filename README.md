@@ -58,4 +58,10 @@
 
 ## License
 
-未指定。
+[MIT](LICENSE) © 2026 elyoncatnecoe
+
+- 许可仅覆盖本仓库的**源代码**。虎鲸形象源自 **DeepSeek** 的品牌标识与商标，权利归 DeepSeek 所有，**不在本许可授权范围内**。
+- 本项目是**个人非官方的爱好者作品**，与 DeepSeek 官方无任何关联、未获其背书或赞助；请勿暗示官方关系，也请勿将虎鲸形象用于商业或商标性使用。
+- 第三方依赖保留各自许可：[Three.js](https://github.com/mrdoob/three.js)（MIT）、[manifold-3d](https://github.com/elalish/manifold)（Apache-2.0）。
+
+详见 [LICENSE](LICENSE)。
